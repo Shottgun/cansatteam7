@@ -1,4 +1,17 @@
-import serial
+newFileC = open("flightData.csv", "a")
+newFileT = open("flightData.txt", "a")
+pastTransmission = ''
+payloadStage = ''
+message = ''
+
+def readSD():
+    global datalog
+    # Opening the file with absolute path
+    flightData = open(r'D:\LOG00018.txt', 'r')
+    # read file
+    datalog = flightData.read()
+    # Closing the file after reading
+    flightData.close()
 
 def readCSV(message):
     global teamID, missionTime, packetNum, flightStage, payloadState, alt, temp, pres, voltage, lat, long, roll, pitch, yaw
@@ -18,8 +31,8 @@ def readCSV(message):
     yaw = ''
     varsSet = 1
     for i in range(len(str(message))):
-        if (str(message)[i] == '\'' or str(message)[i] == 'b'):
-            None
+        if str(message)[i] == '|':
+            pass
         elif str(message)[i] != ',':
             match varsSet:
                 case 1: teamID = teamID + str(message)[i]
@@ -35,8 +48,7 @@ def readCSV(message):
                 case 11: long = long + str(message)[i]
                 case 12: roll = roll + str(message)[i]
                 case 13: pitch = pitch + str(message)[i]
-                case 14: yaw = yaw + str(message)[i]       
-                case 15: acc = acc + str(message)[i]   
+                case 14: yaw = yaw + str(message)[i]          
         else:
             varsSet+=1
 
@@ -85,33 +97,28 @@ def fileWriteDataTXT(teamID, missionTime, packetNum, flightStage, payloadState, 
             case 14: 
                 print("Yaw(z) = ", end = ''), print(yaw, end = ''), print(" degrees\n")
                 newFileT.write("Yaw(z) = "),  newFileT.write(yaw), newFileT.write(" degrees"), newFileT.write('\n\n')
-def fileWriteTXT(message):
-    print(str(message)),
-    newFileT.write(str(message)), newFileT.write('\n')
 
 def fileWriteCSV(message):
-    newFileC.write(str(message) + '\n')
+    global toWrite
+    toWrite = ''
+    for i in range(len(str(message))):
+        if str(message)[i] == '|':
+            pass
+        else:
+            toWrite = toWrite + message[i]
+    newFileC.write(str(toWrite))
 
-newFileC = open("flightData.csv", "a")
-newFileT = open("flightData.txt", "a")
-pastTransmission = ''
-payloadStage = ''
-Chicken = serial.Serial('com6')
-Chicken.baudrate = 9600
-Chicken.bytesize = 8
-Chicken.parity   ='N'    
-Chicken.stopbits = 1     
-Chicken.timeout = 20
+readSD()
 
-while payloadStage != '4':
-    transmission = Chicken.readline()
-    if(len(transmission) > 40):
-        readCSV(transmission)
-        fileWriteCSV(transmission)
+###main :D
+for i in range(len(str(datalog))):
+    message = message + str(datalog)[i]
+    if str(datalog)[i] == '|':
+        readCSV(message)
+        fileWriteCSV(message)
         fileWriteDataTXT(teamID, missionTime, packetNum, flightStage, payloadState, alt, temp, pres, voltage, lat, long, roll, pitch, yaw)
-    else:
-        fileWriteTXT(transmission)
+        message = ''
+
 print("Flight Complete :D")
 newFileC.close()
 newFileT.close()
-Chicken.close()
