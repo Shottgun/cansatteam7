@@ -1,2 +1,0 @@
-All libraries and header files belong to those who made it.
-Documentation can by a quick google search :D
