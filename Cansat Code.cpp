@@ -8,7 +8,7 @@
 #include <SoftwareSerial.h>
 #include <Servo.h>
 
-SoftwareSerial OpenLog(9, 8); // 0 = Soft RX pin (not used), 5 = Soft TX pin
+SoftwareSerial mySerial(8, 9); // 9 = Soft RX pin (not used), 8 = Soft TX pin
 Servo dropServo;
 
 Adafruit_LIS3MDL lis3mdl;
@@ -26,8 +26,7 @@ double alt_offset;
 double alt;
 double preAlt = 0;
 bool satReleased = false;
-int e;
-int ae;
+int e = 0;
 
 //Set up XBee so warning messages will show up to ground station||Remove while loops after testing is done so it does not pause :D
 void BMP_setup() {
@@ -35,7 +34,6 @@ void BMP_setup() {
 
   if (!bmp.begin_I2C()) {   // hardware I2C mode, can pass in address & alt Wire
     Serial.println("Could not find a valid BMP3 sensor, check wiring!");
-    while (1);
   }
   // Set up oversampling and filter initialization
   bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
@@ -49,7 +47,6 @@ void lis3mdl_setup() {
   // Try to initialize!
   if (! lis3mdl.begin_I2C()) {          // hardware I2C mode, can pass in address & alt Wire
     Serial.println("Failed to find LIS3MDL chip");
-    while (1) { delay(10); }
   }
   Serial.println("LIS3MDL Found!");
 
@@ -109,8 +106,6 @@ void lsm6dsox_setup() {
 
   if (!sox.begin_I2C()) {
     Serial.println("Failed to find LSM6DSOX chip");
-    while (1) { delay(10);
-    }
   }
 
   Serial.println("LSM6DSOX Found!");
@@ -231,17 +226,16 @@ void lsm6dsox_setup() {
 }
 
 void setup() {
-  Serial1.begin(9600);
+  mySerial.begin(9600);
   Serial.begin(9600);
-  OpenLog.begin(9600); //Open software serial port at 9600bps
+//  OpenLog.begin(9600); //Open software serial port at 9600bps
+  delay(20000); //change to 20 secs
   Serial.println("Pico started sending bytes via XBee");
 
   dropServo.attach(6,0, 3000);
   dropServo.write(120);
   pinMode(26, OUTPUT); //Buzzer
   pinMode(22, OUTPUT); //LED
-  
-  delay(8000);
   
   BMP_setup();
   
@@ -251,13 +245,7 @@ void setup() {
 
 void release_cansat() {
   dropServo.write(60);
-  delay(400);
-  dropServo.write(75);
-  delay(400);
-  dropServo.write(45);
-  delay(400);
-  dropServo.write(75);
-  delay(400);
+  delay(300);
 }
 void configure_bmp() {
   double num1;
@@ -284,7 +272,6 @@ void get_data() {
   //bmp388 part
   if (! bmp.performReading()) {
     Serial.println("Failed to perform reading D:");
-    return;
   }
 
   //--*For Transmitt*--||
@@ -305,7 +292,7 @@ void get_data() {
   int sec = tme-hr*3600-mins*60;
                                            
   String mtime = (String(hr) + ":" + String(mins) + ":" + String(sec));
-  double v = 3.3;
+  double v = analogRead(22);
   double roll = gyro.gyro.x;
   double pitch = gyro.gyro.y; 
   double yaw = gyro.gyro.z;
@@ -322,39 +309,46 @@ void get_data() {
   double eveZ = event.magnetic.z;
   packs += 1;
   String c = ",";
-  Serial1.print(String(ID) + c + String(mtime) + c + String(packs) + c + String(fstate) + 
+  Serial.println(String(ID) + c + String(mtime) + c + String(packs) + c + String(fstate) + 
   c + String(stage) + c + String(alt) + c + String(tempe) + c + String(pres) + c + String(v) + 
   c + String(lati) + c + String(longi) + c + String(roll) + c + String(pitch) + c + String(yaw));
-  OpenLog.print(String(mtime) + c + String(fstate) + c + String(stage)
-  + c + String(alt) + c + String(tempe) + c + String(pres) + c + String(v)
-  + c + String(roll) + c + String(pitch) + c + String(yaw));
+  //XBee
+  mySerial.println(String(ID) + c + String(mtime) + c + String(packs) + c + String(fstate) + 
+  c + String(stage) + c + String(alt) + c + String(tempe) + c + String(pres) + c + String(v) + 
+  c + String(lati) + c + String(longi) + c + String(roll) + c + String(pitch) + c + String(yaw) + "|");
 }
 
 void flight_stage_1() {
   configure_bmp();
   Serial.println("Stage 1");
-  while ( alt < (groundAlt + 20) ) {
+  if ( alt < (groundAlt + 20) ) {
     Serial.println("yes");
-    (e % 4 == 0 ? digitalWrite(22, HIGH): digitalWrite(22, LOW));
+    digitalWrite(22, HIGH);
+    delay(500);
+    digitalWrite(22, LOW);
     get_data();
     delay(1000);
-    e++;
   }
-  Serial.print("no");
-  stage++;
-  fstate = "Flying";
+  else {
+    Serial.print("no");
+    stage++;
+    fstate = "Flying";
+  }
 }
 void flight_stage_2() {
   Serial.println("Stage 2");
-  while ( alt < 400 ) {
+  if ( alt < 460 ) {
     Serial.print("what the heck");
-    (e % 4 == 0 ? digitalWrite(22, HIGH): digitalWrite(22, LOW));
+    digitalWrite(22, HIGH);
+    delay(500);
+    digitalWrite(22, LOW);
     get_data();
     delay(1000);
-    e++;
   }
-  stage++;
-  fstate = "Descending";
+  else {
+    stage++;
+    fstate = "Descending";
+  }
 }
 void flight_stage_3() {
   Serial.println("Stage 3");
@@ -364,41 +358,39 @@ void flight_stage_3() {
     satReleased = true;
   }
   preAlt = alt;
-  while ( preAlt == alt ) {
-    preAlt = alt;
-    get_data();
-    delay(1000);
+  delay(2000);
+  get_data();
+  digitalWrite(22, HIGH);
+  delay(500);
+  digitalWrite(22, LOW);
+  if ( preAlt <= alt+3 && preAlt >= alt-3 ) {
     e++;
+    if( e == 2 ) {
+      stage++;
+      fstate = "Landed!";
+    }
   }
-  stage++;
-  fstate = "Landed!";
 }
 void flight_stage_4() {
-  Serial.println("Stage 4");
-  (e % 4 == 0 ? digitalWrite(22, HIGH): digitalWrite(22, LOW));
-  //(e % 8 == 0 ? digitalWrite(26, HIGH): digitalWrite(26, LOW));
-  e++;
+  Serial.println("Stage 4:");
+  get_data();
+  digitalWrite(22, HIGH);
+  delay(500);
+  digitalWrite(22, LOW);
+  digitalWrite(26, HIGH);
+  delay(800);
+  digitalWrite(26, LOW);
   Serial.print(stage);
 }
 
 
 void loop() {
-  e = 0;
-  flight_stage_1();
-  e = 0;
-  flight_stage_2();
-  e = 0;
-  flight_stage_3();
-  e = 0;
-  flight_stage_4();
-  Serial.println("All stages complete");
-  
-  
-//  switch(stage){
-//    case 0: stage++; break;
-//    case 1: flight_stage_1(); Serial.print("to Stage 2"); break;
-//    case 2: flight_stage_2(); Serial.print("to Stage 3"); break;
-//    case 3: flight_stage_3(); Serial.print("to Stage 4"); break;
-//    case 4: flight_stage_4(); break;
-//  }
+  switch(stage) {
+    case 0: stage++; break;
+    case 1: flight_stage_1(); break;
+    case 2: Serial.print("to Stage 2"); flight_stage_2(); break;
+    case 3: Serial.print("to Stage 3"); flight_stage_3(); break;
+    case 4: Serial.print("to Stage 4"); dropServo.write(120); flight_stage_4(); break;
+    default: "Case Error"; break;
+  }
 }
